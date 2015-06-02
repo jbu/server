@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 import time
 import argparse
 import sys
+import os
 import logging
 import unittest
 import unittest.loader
@@ -20,6 +21,11 @@ import ga4gh.protocol as protocol
 import ga4gh.converters as converters
 import ga4gh.frontend as frontend
 import ga4gh.configtest as configtest
+
+import oauth2client
+from oauth2client.file import Storage
+from oauth2client.client import Credentials, OAuth2WebServerFlow, flow_from_clientsecrets
+from oauth2client.tools import run
 
 
 # the maximum value of a long type in avro = 2**63 - 1
@@ -64,6 +70,10 @@ class RequestFactory(object):
         Returns true if we are using the passed-in workaround
         """
         return workaround in self.workarounds
+
+    def createOauthLoginRequest(self):
+        request = protocol.SearchRequest()
+
 
     def createSearchVariantSetsRequest(self):
         request = protocol.SearchVariantSetsRequest()
@@ -494,6 +504,25 @@ class ListReferenceBasesRunner(AbstractSearchRunner):
         for base in method(self._request, self._id):
             print(base.sequence)
 
+class LoginOidcRunner(AbstractGetRunner):
+    """
+    Runner class for the referencesets/{id} method
+    """
+    def __init__(self, args):
+        super(LoginOidcRunner, self).__init__(args)
+        self._clientStore = args.clientStore
+
+    def run(self):
+        if self._clientStore is None:
+            self._clientStore = 'client_secrets.json'
+        self._clientStore = os.path.join(os.path.dirname(
+            os.path.abspath(__file__)),
+            self._clientStore)
+        x = oauth2client.client.util.LoginFromClientSecrets(filename=self._clientStore,
+                                               http=httplib2.Http(
+                                                   disable_ssl_certificate_validation=True),
+                                               credentials='browser_cred.dat')
+
 
 class GetReferenceSetRunner(AbstractGetRunner):
     """
@@ -512,6 +541,17 @@ class GetReferenceRunner(AbstractGetRunner):
     """
     def __init__(self, args):
         super(GetReferenceRunner, self).__init__(args)
+
+    def run(self):
+        self._run(self._httpClient.getReference)
+
+
+class GetAuthRunner(AbstractGetRunner):
+    """
+    Runner class for the references/{id} method
+    """
+    def __init__(self, args):
+        super(GetAuthRunner, self).__init__(args)
 
     def run(self):
         self._run(self._httpClient.getReference)
@@ -573,6 +613,12 @@ def addVariantSetIdsArgument(parser):
     parser.add_argument(
         "--variantSetIds", "-V", default=None,
         help="The variant set id(s) to search over")
+
+
+def addClientStoreArgument(parser):
+    parser.add_argument(
+        "--clientStore", "-f", default=0, type=int,
+        help="The client data for OAuth login.")
 
 
 def addStartArgument(parser):
@@ -795,6 +841,14 @@ def addReferencesBasesListParser(subparsers):
     addStartArgument(parser)
     addEndArgument(parser)
 
+def addOidcTokensParser(subparsers):
+    parser = subparsers.add_parser(
+        "references-list-bases",
+        description="List bases of a reference",
+        help="List bases of a reference")
+    parser.set_defaults(runner=LoginOidcRunner)
+    addClientStoreArgument(parser)
+
 
 def client_main(parser=None):
     if parser is None:
@@ -814,6 +868,7 @@ def client_main(parser=None):
     addReferenceSetsGetParser(subparsers)
     addReferencesGetParser(subparsers)
     addReferencesBasesListParser(subparsers)
+    addOidcTokensParser(subparsers)
 
     args = parser.parse_args()
     if "runner" not in args:

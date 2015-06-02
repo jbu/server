@@ -9,8 +9,44 @@ import json
 import requests
 import posixpath
 import logging
+import webbrowser
+import urlparse
+
 
 import ga4gh.protocol as protocol
+
+
+class OIDCSession(requests.Session):
+    def __init__(self, authzEndpoint):
+        super(OIDCSession, self).__init__()
+        self._authzEndpoint = authzEndpoint
+        self._auth = None
+
+    def request(self, *args, **kwargs):
+        if not self._auth:
+            origRedirects = kwargs['allow_redirects']
+            kwargs['allow_redirects'] = False
+            ga4ServerResponse = super(OIDCSession, self).request(*args,
+                                                                 **kwargs)
+            kwargs['allow_redirects'] = origRedirects
+            if ga4ServerResponse.status_code == 200:
+                return ga4ServerResponse
+            elif ga4ServerResponse.is_redirect:
+                redirectUrl = ga4ServerResponse.headers['Location']
+                params = urlparse.parse_qs(urlparse.urlparse(redirectUrl).query)
+                state = params['state']
+                webbrowser.open(redirectUrl, new=1, autoraise=True)
+                code = raw_input('Enter token shown in browser:')
+                authResponse = super(OIDCSession, self).request(
+                    method="GET",
+                    url=self._authzEndpoint,
+                    params={'code': code,
+                            'state': state})
+                self._auth = authResponse.headers['Authorization']
+                self.headers.update('Authorization', self._auth)
+            else:
+                pass # errors
+        return super(OIDCSession, self).request(*args, **kwargs)
 
 
 class HttpClient(object):
@@ -45,6 +81,7 @@ class HttpClient(object):
             # suppress warning about using https without cert verification
             requests.packages.urllib3.disable_warnings()
         requestsLog.propagate = True
+        self._session = OIDCSession('https://authzendpoint')
 
     def getBytesRead(self):
         """
@@ -121,14 +158,14 @@ class HttpClient(object):
         Performs a request to the server and returns the response
         """
         headers = {}
-        params = self._getAuth()
-        params.update(httpParams)
+        params = httpParams
+        params['data'] = httpData
+        params['headers'] = headers
         self._logger.info("{0} {1}".format(httpMethod, url))
         if httpData is not None:
             headers.update({"Content-type": "application/json"})
             self._debugRequest(httpData)
-        response = requests.request(
-            httpMethod, url, params=params, data=httpData, headers=headers)
+        response = self._session.request(httpMethod, url, **params)
         self._checkStatus(response)
         return self._deserializeResponse(response, protocolResponseClass)
 
