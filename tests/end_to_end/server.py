@@ -180,8 +180,10 @@ DEBUG = True
         if self.useOidc:
             config += """
 TESTING = True
-OIDC_PROVIDER = "https://localhost:{0}"
-""".format(oidcOpPort)
+OIDC_PROVIDER = "https://{}:{}"
+PERMISSIONS = {{"diana@example.org": ["dataset1"],
+            "uc@example.com": ["dataset1"]}}
+""".format(socket.gethostname(), oidcOpPort)
         return config
 
     def getCmdLine(self):
@@ -265,5 +267,6 @@ class OidcOpServerForTesting(ServerForTesting):
         super(OidcOpServerForTesting, self).start()
 
     def getCmdLine(self):
-        return ("python src/run.py --base https://localhost:{}" +
-                " -p {} -d settings.yaml").format(oidcOpPort, oidcOpPort)
+        return ("python src/run.py --base https://{}:{}" +
+                " -p {} -d settings.yaml").format(
+            socket.gethostname(), oidcOpPort, oidcOpPort)

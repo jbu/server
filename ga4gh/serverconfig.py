@@ -8,6 +8,8 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import socket
+
 
 class BaseConfig(object):
     """
@@ -44,7 +46,9 @@ class LocalOidConfig(DevelopmentConfig):
     """
     Configuration used for developing against a local OIDC server
     """
-    OIDC_PROVIDER = "https://localhost:8443"
+    OIDC_PROVIDER = "https://{}:8443".format(socket.gethostname())
+    PERMISSIONS = {'diana@example.org': ['d1'],
+                   'uc@example.com': ['d1']}
 
 
 class ProductionConfig(BaseConfig):
@@ -63,9 +67,10 @@ class GoogleOidcConfig(ProductionConfig):
     Google as the authentication provider.
     """
     OIDC_PROVIDER = "https://accounts.google.com"
-    OIDC_REDIRECT_URI = "https://localhost/oauth2callback"
+    OIDC_REDIRECT_URI = "https://localhost:8000/oauth2callback"
     OIDC_CLIENT_ID = "XXX"
     OIDC_CLIENT_SECRET = "XXX"
+    PERMISSIONS = {'xxx@gmail.com': ['d1']}
 
 
 class TestConfig(BaseConfig):
@@ -84,3 +89,5 @@ class TestOidcConfig(TestConfig):
     OIDC_AUTHZ_ENDPOINT = "https://accounts.example.com/auth"
     OIDC_TOKEN_ENDPOINT = "https://accounts.example.com/token"
     OIDC_TOKEN_REV_ENDPOINT = "https://accounts.example.com/revoke"
+    PERMISSIONS = {'diana@example.org': ['d1'],
+                   'uc@example.com': ['d1']}

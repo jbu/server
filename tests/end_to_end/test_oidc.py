@@ -40,7 +40,7 @@ def getClientKey(server_url, username, password):
     keyPage = session.post(nextUrl, data, verify=False)
     # Extract the key from the page
     keyTree = html.fromstring(keyPage.text)
-    tokenMarker = 'Session Token '  # the token always appears after this text
+    tokenMarker = 'Session Token: '  # the token always appears after this text
     tokenTag = (tag for tag in keyTree.iterdescendants()
                 if tag.text_content().startswith(tokenMarker)).next()
     return tokenTag.text_content()[len(tokenMarker):]

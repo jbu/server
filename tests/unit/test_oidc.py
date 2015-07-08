@@ -159,7 +159,8 @@ class TestFrontendOidc(unittest.TestCase):
         Test that when the authorization provider calls back to us, we can
         handle the reply correctly. This test is the 'succeeds' case.
         """
-        url = '/oauth2callback?scope=openid+profile&state={0}&code={1}'.format(
+        url = ('/oauth2callback?scope=openid'
+               '+profile+email&state={0}&code={1}').format(
             oic.oauth2.rndstr(0), OICCODE
         )
         with self.app.session_transaction() as sess:

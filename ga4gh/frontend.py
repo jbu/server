@@ -282,6 +282,7 @@ def configure(configFile=None, baseConfig="ProductionConfig",
                 redirect_uris=[redirectUri],
                 verify_ssl=False)
             app.oidcClient.store_registration_info(response)
+        app.permissions = app.config['PERMISSIONS']
 
 
 def getFlaskResponse(responseString, httpStatus=200):
@@ -359,7 +360,7 @@ def startLogin():
     args = {
         "client_id": app.oidcClient.client_id,
         "response_type": "code",
-        "scope": ["openid", "profile"],
+        "scope": ["openid", "profile", "email"],
         "nonce": flask.session["nonce"],
         "redirect_uri": app.oidcClient.redirect_uris[0],
         "state": flask.session["state"]
@@ -376,6 +377,8 @@ def checkAuthentication():
     The request will have a parameter 'key' if it came from the command line
     client, or have a session key of 'key' if it's the browser.
     If the token is not found, start the login process.
+    If we are requesting particular datasets, then check that the user
+    has access to those datasets. If not, raise an exception.
 
     If there is no oidcClient, we are running naked and we don't check.
     If we're being redirected to the oidcCallback we don't check.
@@ -396,6 +399,17 @@ def checkAuthentication():
             raise exceptions.NotAuthenticatedException()
         else:
             return startLogin()
+
+    jsonBody = flask.request.get_json() or {}
+    if "datasetIds" in jsonBody:
+        userId = app.tokenMap[key]['userId']
+        if userId not in app.permissions:
+            raise exceptions.NotAuthenticatedException(userId)
+        userDatasets = app.permissions[userId]
+        validIds = [dataset for dataset in jsonBody['datasetIds']
+                    if dataset in userDatasets]
+        if validIds is []:
+            raise exceptions.NotAuthenticatedException()
 
 
 def handleFlaskGetRequest(version, id_, flaskRequest, endpoint):
@@ -719,7 +733,7 @@ def oidcCallback():
         "client_secret": app.oidcClient.client_secret
     }
     atr = app.oidcClient.do_access_token_request(
-        scope="openid",
+        scope="openid, email",
         state=respState,
         request_args=args)
 
@@ -729,9 +743,17 @@ def oidcCallback():
     atrDict = atr.to_dict()
     if flask.session.get('nonce') != atrDict['id_token']['nonce']:
         raise exceptions.NotAuthenticatedException()
+
+    userInfo = app.oidcClient.do_user_info_request(state=aresp["state"])
     key = oic.oauth2.rndstr(SECRET_KEY_LENGTH)
     flask.session['key'] = key
-    app.tokenMap[key] = aresp["code"], respState, atrDict
+    userId = userInfo['email']
+    flask.session['userId'] = userId
+    app.tokenMap[key] = {'code': aresp["code"],
+                         'state': respState,
+                         'accessTokenResponse': atrDict,
+                         'userId': userId,
+                         'userInfo': userInfo}
     # flask.url_for is broken. It relies on SERVER_NAME for both name
     # and port, and defaults to 'localhost' if not found. Therefore
     # we need to fix the returned url
